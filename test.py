@@ -38,6 +38,7 @@ def parse():
     parser.add_argument('-oa', '--output_enable_all_stats', action="store_true", default=False)
     parser.add_argument('--level', type=int, default=0)
     parser.add_argument('--debug', action="store_true", default = False)
+    parser.add_argument('-d', '--dram_comm_type', choices=['DMA', 'TEST', 'VIRTUAL'], default = 'VIRTUAL')
     return parser.parse_args()
 
 
@@ -116,6 +117,7 @@ cfg.MIDAP.WMEM.NUM_ENTRIES = args.wmem_entries * 1024
 cfg.MIDAP.WMEM.NUM         = args.num_cims
 
 cfg.DRAM.FREQUENCY   = args.dram_freq
+cfg.DRAM.COMM_TYPE = args.dram_comm_type
 cfg.SYSTEM.BANDWIDTH = (cfg.DRAM.CHANNEL_SIZE * cfg.DRAM.FREQUENCY * cfg.DRAM.NUM_CHANNELS * 2) // cfg.SYSTEM.DATA_SIZE
 
 if args.debug:
