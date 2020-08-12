@@ -113,6 +113,7 @@ class MidapManager():
     def finish(self):
         self.finish_pipeline()
         self.memory_controller.sync()
+        self.control_logic.sync()
         # Check Functional Result
         if self.simulation_level == 0:
             self.diff_cnt = 0

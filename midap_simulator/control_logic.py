@@ -195,6 +195,9 @@ class ControlLogic():
             if head <= x and x < tail:
                 return fmem_idx, x - head
 
+    def sync(self):
+        self.manager.stats.increase_cycle(self.skipped_cycles)
+
 class ControlLogicLv0(ControlLogic):
     def __init__(self, manager):
         super().__init__(manager)
@@ -431,6 +434,7 @@ class ControlLogicLv2(ControlLogicLv1):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.write_lambda_x = lambda x: True
+        self.skip_write = not cfg.DRAM.INCLUDE_DRAM_WRITE and cfg.DRAM.COMM_TYPE == 'VIRTUAL'
 
     def setup(self, layer_info):
         super().setup(layer_info)
@@ -490,11 +494,13 @@ class ControlLogicLv2(ControlLogicLv1):
             if x == read_crit_x:
                 read_flag = True
                 read_crit_x = self.get_and_set_read_crit_x()
-            yield_flag = read_flag or write_flag or first_wmem_read
+            yield_flag = read_flag or (not self.skip_write and write_flag) or first_wmem_read
             first_wmem_read = False
             if not yield_flag:
                 self.skipped_cycles += self.num_gemm_rows
                 skipped_mem_read += self.num_gemm_rows
+                if write_flag:
+                    self.manager.stats.dram_write()
             else: 
                 self.skipped_cycles += self.num_gemm_rows - 1
                 skipped_mem_read += self.num_gemm_rows - 1
@@ -520,17 +526,20 @@ class ControlLogicLv2(ControlLogicLv1):
         s= main_op.stride
         last_filter = False
         read_crit_x = self.get_and_set_read_crit_x()
+        yz_worker_flag = self.input_tensor.mapping_type == 'default'
         while not last_filter:
             last_filter, filter_idx = self.set_next(last)
             first_wmem_read = True
             for x in range(head_x, tail_x + 1, s):
                 read_flag = False
                 write_flag = self.write_lambda_x(x)
-                if x + main_op.k_w >= read_crit_x:
+                orig_x, _, _ = self.input_tensor.get_loc((min(self.input_tensor.shape[0], x + main_op.k_w) - 1, 0, 0))
+                if orig_x >= read_crit_x:
                     read_flag = True
                     read_crit_x = self.get_and_set_read_crit_x()
                 for y in range(self.head_y, self.tail_y + 1, s):
-                    if read_flag or write_flag or first_wmem_read:
+                    if yz_worker_flag or read_flag or (not self.skip_write and write_flag) or first_wmem_read:
+                        self.logger.debug("LV2 Logic generate dataflow for loc {}, flags = {}".format((x, y, filter_idx), (read_flag, write_flag, first_wmem_read)))
                         worker = self.convpool_worker(x, y, filter_idx)
                         for dataflow in worker:
                             yield self.generate(dataflow, last_filter)
@@ -538,6 +547,8 @@ class ControlLogicLv2(ControlLogicLv1):
                         first_wmem_read = False
                     else:
                         self.update_stats(x, y)
+                        if write_flag:
+                            self.manager.stats.dram_write()
         self.generator = self.default_generator()
 
     def update_stats(self, x, y, include_last = True):
@@ -563,8 +574,8 @@ class ControlLogicLv2(ControlLogicLv1):
                 x_access_count = max_x // scale_x - (min_x - 1) // scale_x
                 y_access_count = max_y // scale_y - (min_y - 1) // scale_y
             else:
-                x_access_count = max_x - min_x
-                y_access_count = max_y - min_y
+                x_access_count = max_x - min_x + 1
+                y_access_count = max_y - min_y + 1
             access_count = x_access_count * y_access_count * read_factor
         elif all([isinstance(main_op, ConvOp), self.input_tensor.mapping_type == 'default']):
             main_op = self.main_op
@@ -591,6 +602,7 @@ class ControlLogicLv2(ControlLogicLv1):
                     access_count += 1
         else:
             raise ValueError("Not Classified main operation {}".format(main_op))
+        self.logger.debug("Computation time for ({},{}) is estimated as {} cycles".format(x, y, access_count))
         if not include_last:
             access_count -= 1
         self.manager.stats.fmem_read(access_count)
@@ -598,7 +610,9 @@ class ControlLogicLv2(ControlLogicLv1):
         self.skipped_cycles += access_count
     
     def depthwise_worker(self, in_x, in_y, filter_idx):
-        fmem_idx, _ = self.get_fmem_info(min(in_x + self.main_op.k_w - 1, self.input_tensor.shape[0] - 1))
+        main_op = self.main_op
+        orig_x, _, _ = self.input_tensor.get_loc((min(self.input_tensor.shape[0], in_x + main_op.k_w) - 1, 0, 0))
+        fmem_idx, _ = self.get_fmem_info(orig_x)
         yield generate_dataflow_info(
                 phase = 1,
                 loc = self.output_loc,
@@ -611,20 +625,9 @@ class ControlLogicLv2(ControlLogicLv1):
         self.update_stats(in_x, in_y, False)
     
     def conv_z_worker(self, in_x, in_y, filter_idx):
-        fmem_idx, _ = self.get_fmem_info(min(in_x + self.main_op.k_w - 1, self.input_tensor.shape[0] - 1))
-        yield generate_dataflow_info(
-                phase = 1,
-                loc = self.output_loc,
-                fmem_idx = fmem_idx,
-                fmem_row = 0,
-                wmem_row = 0,
-                reset = True,
-                last = True
-                )
-        self.update_stats(in_x, in_y, False)
-
-    def conv_yz_worker(self, in_x, in_y, filter_idx):
-        fmem_idx, _ = self.get_fmem_info(min(in_x + self.main_op.k_w - 1, self.input_tensor.shape[0] - 1))
+        main_op = self.main_op
+        orig_x, _, _ = self.input_tensor.get_loc((min(self.input_tensor.shape[0], in_x + main_op.k_w) - 1, 0, 0))
+        fmem_idx, _ = self.get_fmem_info(orig_x)
         yield generate_dataflow_info(
                 phase = 1,
                 loc = self.output_loc,
@@ -642,19 +645,17 @@ class ControlLogicLv2(ControlLogicLv1):
         in_x, _, _ = self.input_tensor.get_loc((x,0,0))
         fmem_idx, effective_x = self.get_fmem_info(x)
         row_per_channel = in_c // self.system_width
-        for y in range(in_h):
-            fmem_start_row = self.input_tensor.get_address((effective_x, y, 0)) // self.system_width
-            for row in range(row_per_channel): # I'm not sure that input virtualization can be applied on arithmetic operators
-                z = row * self.system_width
-                wmem_row = row_per_channel * y + row if not main_op.broadcast else row
-                self.output_loc = (x, y, z)
-                yield generate_dataflow_info(
-                        phase = 1,
-                        loc=self.output_loc,
-                        reset=True,
-                        last=True,
-                        fmem_idx=fmem_idx,
-                        fmem_row=fmem_start_row + row,
-                        wmem_row=wmem_row
-                        )
+        access_count = row_per_channel * in_h - 1
+        yield generate_dataflow_info(
+                phase = 1,
+                loc=self.output_loc,
+                fmem_idx=fmem_idx,
+                fmem_row=0,
+                wmem_row=0,
+                reset=True,
+                last=True,
+                )
+        self.skipped_cycles += access_count
+        self.manager.stats.fmem_read(access_count)
+        self.manager.stats.wmem_read(access_count)
 

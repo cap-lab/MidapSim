@@ -50,7 +50,6 @@ class TestWrapper(object):
             del self.midap_simulator
         self.midap_simulator = MidapManager(self.simulation_level)
         stats = self.midap_simulator.simulate(sim_instruction)
-        self.step_checker[2] = 1
         return sim_instruction, stats
 
     def run_all(self, model, output_dir=None, output_option=(True, False, False, False)):

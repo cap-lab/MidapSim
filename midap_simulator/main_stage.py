@@ -59,6 +59,7 @@ class FMainStage(Stage): # Cycle - level functional simulation
         self.add_bias = isinstance(op, ConvOp) and op.bias is not None
         self.loaded_bias = -1
         self.wmem_last_load = (-1, -1)
+        self.save_wmem = isinstance(op, ConvOp)
 
     def run(self, dataflow_info):
         output_dataflow_info = self.do_activator(self.dataflow_info_buf[3])
@@ -78,7 +79,8 @@ class FMainStage(Stage): # Cycle - level functional simulation
             self.memory_controller.load_fbuf(self.fbuf_mem, fmem_idx, fmem_row)
         if wmem_row > -1 and self.wmem_last_load != (info.out_z, wmem_row):
             self.memory_controller.load_wbuf(self.wbuf_mem, wmem_row)
-            self.wmem_last_load = (info.out_z, wmem_row)
+            if self.save_wmem:
+                self.wmem_last_load = (info.out_z, wmem_row)
         self.logger.debug("Input info: {}".format(info))
         #self.logger.debug("fbuf_mem: {}".format(self.fbuf_mem[0:6]))
         #self.logger.debug("wbuf_mem: {}".format(self.wbuf_mem[0,0:6]))
@@ -211,6 +213,7 @@ class VMainStage(Stage):
         self.add_bias = isinstance(op, ConvOp) and op.bias is not None
         self.loaded_bias = -1
         self.wmem_last_load = (-1, -1)
+        self.save_wmem = isinstance(op, ConvOp)
 
     def run(self, info):
         if info.phase in [0, 2, 3]:
@@ -222,7 +225,8 @@ class VMainStage(Stage):
             self.memory_controller.load_fbuf(self.buffer[0], fmem_idx, fmem_row)
         if wmem_row > -1 and self.wmem_last_load != (info.out_z, wmem_row):
             self.memory_controller.load_wbuf(self.buffer, wmem_row)
-            self.wmem_last_load = (info.out_z, wmem_row)
+            if self.save_wmem:
+                self.wmem_last_load = (info.out_z, wmem_row)
         if info.last and self.add_bias and self.loaded_bias != info.out_z:
             self.memory_controller.load_bbuf(self.buffer[0], 0)
             self.loaded_bias = info.out_z
