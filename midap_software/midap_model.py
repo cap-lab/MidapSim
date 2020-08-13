@@ -30,7 +30,12 @@ class MidapModel(OrderedDict):
                 self._add_layer(op)
             elif reduction_logic_on and any([isinstance(op, PoolOp) and op.global_pooling, op.type == 'Softmax']):
                 self._add_reduction_layer(op)
-            elif any([isinstance(op, UpsampleOp), isinstance(op, Crop) and op.input_layers[0] not in self.init_layer]) and allow_abstract and all([len(op_dict[layer].input_layers) == 1 for layer in op.next]):
+            elif all([
+                allow_abstract,
+                any([isinstance(op, UpsampleOp), isinstance(op, Crop)]),
+                op.input_layers[0] not in self.init_layer or op.output_tensor.shape[-1] >= 16,
+                all([len(op_dict[layer].input_layers) == 1 for layer in op.next]),
+                ]):
                 if op.input_layers[0] in self.mapping_layer_dict:
                     raise ValueError("Multi-level tensor virtualization is not supported")
                 self.mapping_layer_dict[op.name] = op
