@@ -2,7 +2,7 @@ import abc
 import logging
 from abc import ABC
 
-from generic_op import ConvPoolOpBase, Crop
+from generic_op import ConvPoolOpBase
 from logger import init_logger
 
 from .layer_block import BlockBuilder, LayerBlock
@@ -304,7 +304,7 @@ class SingleBlockPartition(Partition):
         import numpy as np
 
         def get_feature_size_from(p):
-            return [v[0] for k, v in p.feature_size_dict.items() if not isinstance(k.input[0].main_op, Crop)]
+            return [v[0] for k, v in p.feature_size_dict.items() if k.input[0].main_op.type != "HEAD"]
 
         in_feature = None
         for p in self.pyramids:
