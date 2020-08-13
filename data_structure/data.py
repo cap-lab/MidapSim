@@ -111,9 +111,9 @@ class SWMEMInfo(object):
                 self.bias_name = main_op.name + '_b'
             self.load_filter_once = midap_layer.load_filter_once
             if main_op.type == 'Depthwise':
-                self.num_filters = midap_layer.output_tensor.shape[-1]
                 self.load_filter_once = False
                 self.compute_type = 1
+                self.num_filters = midap_layer.input[0].output_tensor.shape[-1]
         elif isinstance(main_op, ArithmeticOp):
             in2 = midap_layer.input[1]
             self.filter_name = in2.name
