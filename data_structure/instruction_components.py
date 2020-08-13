@@ -261,7 +261,7 @@ class SBehaviorInfo(list):
         if main_op.type == 'Gemm':
             return math.ceil(x / main_op.output_tensor.shape[1])
         elif isinstance(main_op, ConvPoolOpBase):
-            return (x + main_op.pad_l) // main_op.stride
+            return math.ceil((x + main_op.pad_l) / main_op.stride)
         else:
             return x
 

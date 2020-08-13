@@ -98,59 +98,60 @@ expected_stats = {  # Expected (Latency, Dram Access) of each testset
     'wide_resnet50_2'  : (11382105,  84186096)
 }
 
-args = parse()
+if __name__ == '__main__':
+    args = parse()
 
-cfg.MIDAP.CONTROL_STRATEGY.LAYER_COMPILER = args.layer_compiler
-cfg.MIDAP.BUS_POLICY                      = args.bus_policy
-cfg.MODEL.USE_TILING                      = True if args.tiling_method else False
-cfg.MODEL.TILING_METHOD                   = args.tiling_method
-cfg.MODEL.TILING_OBJECTIVE                = args.tiling_objective
-cfg.MIDAP.CONTROL_STRATEGY.FILTER_LOAD    = args.load
-cfg.MODEL.ALLOW_ABSTRACT_DATA             = not args.disable_abstract_layer
-cfg.MODEL.REDUCTION_LOGIC                 = not args.disable_reduction_layer
+    cfg.MIDAP.CONTROL_STRATEGY.LAYER_COMPILER = args.layer_compiler
+    cfg.MIDAP.BUS_POLICY                      = args.bus_policy
+    cfg.MODEL.USE_TILING                      = True if args.tiling_method else False
+    cfg.MODEL.TILING_METHOD                   = args.tiling_method
+    cfg.MODEL.TILING_OBJECTIVE                = args.tiling_objective
+    cfg.MIDAP.CONTROL_STRATEGY.FILTER_LOAD    = args.load
+    cfg.MODEL.ALLOW_ABSTRACT_DATA             = not args.disable_abstract_layer
+    cfg.MODEL.REDUCTION_LOGIC                 = not args.disable_reduction_layer
 
 # Configuration
-cfg.MIDAP.SYSTEM_WIDTH     = args.system_width
-cfg.MIDAP.FMEM.NUM_ENTRIES = args.fmem_entries * 1024
-cfg.MIDAP.FMEM.NUM         = args.num_banks
-cfg.MIDAP.WMEM.NUM_ENTRIES = args.wmem_entries * 1024
-cfg.MIDAP.WMEM.NUM         = args.num_cims
+    cfg.MIDAP.SYSTEM_WIDTH     = args.system_width
+    cfg.MIDAP.FMEM.NUM_ENTRIES = args.fmem_entries * 1024
+    cfg.MIDAP.FMEM.NUM         = args.num_banks
+    cfg.MIDAP.WMEM.NUM_ENTRIES = args.wmem_entries * 1024
+    cfg.MIDAP.WMEM.NUM         = args.num_cims
 
-cfg.DRAM.FREQUENCY   = args.dram_freq
-cfg.DRAM.COMM_TYPE = args.dram_comm_type
-cfg.SYSTEM.BANDWIDTH = (cfg.DRAM.CHANNEL_SIZE * cfg.DRAM.FREQUENCY * cfg.DRAM.NUM_CHANNELS * 2) // cfg.SYSTEM.DATA_SIZE
+    cfg.DRAM.FREQUENCY   = args.dram_freq
+    cfg.DRAM.COMM_TYPE = args.dram_comm_type
+    cfg.SYSTEM.BANDWIDTH = (cfg.DRAM.CHANNEL_SIZE * cfg.DRAM.FREQUENCY * cfg.DRAM.NUM_CHANNELS * 2) // cfg.SYSTEM.DATA_SIZE
 
-if args.debug:
-    cfg.LOGGING_CONFIG_DICT['root']['level'] = 'DEBUG'
-    cfg.LOGGING_CONFIG_DICT['root']['handlers'] = ['console', 'file']
-    cfg.LOGGING_CONFIG_DICT['loggers']['debug']['level'] = 'DEBUG'
+    if args.debug:
+        cfg.LOGGING_CONFIG_DICT['root']['level'] = 'DEBUG'
+        cfg.LOGGING_CONFIG_DICT['root']['handlers'] = ['console', 'file']
+        cfg.LOGGING_CONFIG_DICT['loggers']['debug']['level'] = 'DEBUG'
 
-input_shape = None if args.input_size == 0 else (1, 3, args.input_size, args.input_size)
+    input_shape = None if args.input_size == 0 else (1, 3, args.input_size, args.input_size)
 
-output_dir = args.output_dir
-if args.output_enable_all_stats:
-    output_option = (True, True, True, True)
-else:
-    output_option = (args.output_enable_read_stats, args.output_enable_write_stats,
-                     args.output_enable_components_stats, args.output_enable_etc_stats)
+    output_dir = args.output_dir
+    if args.output_enable_all_stats:
+        output_option = (True, True, True, True)
+    else:
+        output_option = (args.output_enable_read_stats, args.output_enable_write_stats,
+                         args.output_enable_components_stats, args.output_enable_etc_stats)
 
-tr = TestWrapper(args.level)
+    tr = TestWrapper(args.level)
 
-if args.network == 'all':
-    for model in custom_examples:
-        mb = custom_examples[model](input_shape)
-        tr.run_all(mb)
+    if args.network == 'all':
+        for model in custom_examples:
+            mb = custom_examples[model](input_shape)
+            tr.run_all(mb)
 
-elif args.network == 'test':
-    for network in test_set:
-        mb = custom_examples[network](input_shape)
-        latency, dram_access = tr.run_all(mb)
+    elif args.network == 'test':
+        for network in test_set:
+            mb = custom_examples[network](input_shape)
+            latency, dram_access = tr.run_all(mb)
 
-elif args.network in custom_examples:
-    if input_shape is None:
-        raise ValueError("you must specify image_size w/ --image_size or -i $IMG_SIZE to test a specific model")
-    mb = custom_examples[args.network](input_shape)
-    tr.run_all(mb, output_dir=output_dir, output_option=output_option)
+    elif args.network in custom_examples:
+        #if input_shape is None:
+        #    raise ValueError("you must specify image_size w/ --image_size or -i $IMG_SIZE to test a specific model")
+        mb = custom_examples[args.network](input_shape)
+        tr.run_all(mb, output_dir=output_dir, output_option=output_option)
 
-else:
-    raise ValueError("{} is not supported model.. please check custom_examples list.".format(args.network))
+    else:
+        raise ValueError("{} is not supported model.. please check custom_examples list.".format(args.network))
