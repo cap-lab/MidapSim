@@ -10,12 +10,12 @@ MIDAP, Memory In the Datapath Architecture Processor, features bus-free multi-ba
 
 Please cite MIDAP in your publications if it helps your research:
 
-    @inproceedings{liu2016ssd,
+    @inproceedings{kang2019novel,
         title = {A Novel Convolutional Neural Network Accelerator That Enables Fully-Pipelined Execution of Layers},
         author = { D. {Kang} and J. {Kang} and H. {Kwon} and H. {Park} and S. {Ha} },
         booktitle = { 2019 IEEE 37th International Conference on Computer Design (ICCD) },
         year = {2019},
-        pages = {698-701},
+        pages = {698--701},
     }
 
 This repository includes MIDAP Compiler & MIDAP Simulator
