@@ -1,16 +1,13 @@
 from __future__ import print_function
 
-import logging
-import os.path
-
-from config import cfg
+from data_structure import SimulatorInstructionV1
 from generic_op import *
 from midap_simulator import *
-from data_structure import SimulatorInstructionV1
 from midap_software import Compiler, MidapModel
 
+
 class TestWrapper(object):
-    def __init__(self, simulation_level = 0):
+    def __init__(self, simulation_level=0):
         self.cv = None
         self.midap_model = None
         self.cm = None
@@ -60,4 +57,3 @@ class TestWrapper(object):
         diff, latency, feature_dram, weight_dram = stat
         self.midap_simulator.stats.print_result(sim_instruction.processing_order, model)
         return latency, (feature_dram + weight_dram)
-

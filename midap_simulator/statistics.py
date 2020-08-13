@@ -1,13 +1,14 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import time
 import logging
+import time
 
 from acc_utils.attrdict import AttrDict
 from acc_utils.errors import *
 from acc_utils.model_utils import *
 from config import cfg
 from generic_op import *
+
 
 class Stats():
     def __init__(self):
@@ -28,7 +29,7 @@ class Stats():
         self.global_stats = self.create_branch()
         self.local_stats = self.create_branch()
         self.layer_stats = {}
-    
+
     def create_branch(self):
         branch = AttrDict()
         branch.SIM_TIME = time.time()
@@ -50,7 +51,7 @@ class Stats():
         branch.DELAY.WRITE_DRAM = 0
         branch.DELAY.WRITE_FMEM = 0
         return branch
-    
+
     def init_description(self):
         __DESCRIPTION = self.create_branch()
         __DESCRIPTION.SIM_TIME = "Elapsed time"
@@ -92,7 +93,6 @@ class Stats():
         self.layer_stats[layer_name] = self.local_stats
         self.local_stats = self.create_branch()
 
-
     def end_simulation(self):
         self.global_stats.SIM_TIME = time.time() - self.global_stats.SIM_TIME
         stat = self.global_stats
@@ -113,8 +113,7 @@ class Stats():
                            stat.READ.DRAM2FMEM, stat.READ.DRAM2WMEM,
                            stat.READ.FMEM,
                            stat.READ.WMEM)
-              )
-
+                         )
 
     def dram_read(self, cnt=1):
         self.local_stats.READ.DRAM += cnt
@@ -122,7 +121,7 @@ class Stats():
     def read_dram2fmem(self, cnt=1):
         self.local_stats.READ.DRAM2FMEM += cnt
         self.dram_read(cnt)
-    
+
     def read_dram2wmem(self, cnt=1):
         self.local_stats.READ.DRAM2WMEM += cnt
         self.dram_read(cnt)
@@ -139,14 +138,11 @@ class Stats():
     def total_cycle(self):
         return self.local_stats.CLOCK + self.global_stats.CLOCK
 
-
     def current_cycle(self):
         return self.local_stats.CLOCK
 
-
     def increase_cycle(self, t=1):
         self.local_stats.CLOCK += t
-
 
     def memory_latency(self):
         return self.local_stats.DELAY.DRAM
@@ -188,7 +184,6 @@ class Stats():
                 stats_layer = self.layer_stats[layer.name]
                 print("Layer: {:>16s} {:^12s}\tDRAM: {:>8d}\tFMEM: {:>8d} ({:>5d}, {:>5d})".format(
                     layer.name, "(" + layer.main_op.type + ")", stats_layer['DELAY.DRAM'], stats_layer['WRITE']['FMEM'], stats_layer['DELAY.READ_FMEM'], stats_layer['DELAY.WRITE_DRAM']))
-
 
     def print_result(self, path_info, model):
         import math
@@ -273,3 +268,6 @@ class Stats():
                                                            global_stat.DELAY.READ_FMEM / global_stat.CLOCK,
                                                            global_stat.DELAY.READ_WMEM / global_stat.CLOCK,
                                                            conv_delay / global_stat.CLOCK))
+
+    def get_dram_delay(self):
+        return self.global_stats.DELAY.DRAM

@@ -161,16 +161,18 @@ class SimulationBaseAnalyzer(Analyzer):
 
     def _simulate(self, model):
         from midap_simulator.midap_manager import MidapManager
-        import midap_simulator.statistics as stats
+        from data_structure import SimulatorInstructionV1
         inputs, paths = self._compile_and_get_path(model)
         layers = paths
 
         init_layers = model.init_layer
-        simulator = MidapManager()
-        _, cycle, feature, weight = simulator.process_network_with_multiple_input(inputs, init_layers, layers)
+        sim_instruction = SimulatorInstructionV1()
+        sim_instruction.from_compiler_input(inputs, init_layers, layers)
+        simulator = MidapManager(0)
+        _, cycle, feature, weight = simulator.simulate(sim_instruction)
         out_shape = layers[0].get_output_shape()
-        stats.print_result(layers, out_shape)
-        dram_delay = stats.get_dram_delay()
+        simulator.stats.print_result(sim_instruction.processing_order, out_shape)
+        dram_delay = simulator.stats.get_dram_delay()
         return feature, weight, dram_delay, cycle - dram_delay
 
     def analyze(self, model):
