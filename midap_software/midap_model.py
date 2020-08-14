@@ -246,6 +246,7 @@ class MidapModel(OrderedDict):
         offset_prev = layer.output_tensor.shape[axis]
         for concat_layer, offset in reversed(list(zip(layer.input, layer.main_op.size_info))):
             if len(self[concat_layer].next) == 1:
+                self[concat_layer].offset_axis = axis
                 self[concat_layer].offset = (offset, offset_prev)
                 offset_prev = offset
                 self[concat_layer].output_tensor = layer.output_tensor
