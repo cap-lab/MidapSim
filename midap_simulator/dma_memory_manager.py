@@ -50,8 +50,8 @@ class DMemoryManager(MemoryManager):
         # 2 , 3 : BMMEM id
         # 4 ~ N + 3 : FMEM id 
 
-    def add_dram_info(self, name, addr):
-        self.dram_address_dict[name] = addr # Save DRAM Address
+    def set_dram_info(self, dram_data, dram_dict):
+        self.dram_address_dict = dram_dict
 
     def reset_wmem(self):
         self.wmem_in_use = -1
@@ -254,8 +254,11 @@ class DMemoryManager(MemoryManager):
 class TDMemoryManager(DMemoryManager): # Test dump memory file & DMA logic works
     def __init__(self, manager):
         super().__init__(manager)
-        self.dram_data = np.fromfile(cfg.DRAM.DUMP_FILE, dtype=np.float32)
     
+    def set_dram_info(self, dram_data, dram_dict):
+        self.dram_address_dict = dram_dict
+        self.dram_data = dram_data
+
     def update_queue(self, mem_id = -1, sync = False):
         current_time = self.manager.stats.total_cycle()
         # mem_id < 1: Update DMA - HSIM Timer until t <= current_time

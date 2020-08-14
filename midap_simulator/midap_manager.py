@@ -45,11 +45,9 @@ class MidapManager():
         if not self.initialized:
             self.initialize()
         self.initialized = False
-        dram_data_dict = simulator_instruction.dram_data_dict
-        processing_order = simulator_instruction.processing_order
         self.data_info_dict = simulator_instruction.data_info_dict
-        for data in dram_data_dict:
-            self.memory_controller.add_dram_info(data, dram_data_dict[data])
+        processing_order = simulator_instruction.processing_order
+        self.memory_controller.set_dram_info(simulator_instruction.dram_data, simulator_instruction.dram_address_dict)
         return self._process_network(processing_order)
 
     def _process_network(self, path_info):

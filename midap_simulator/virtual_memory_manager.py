@@ -11,7 +11,6 @@ class VMemoryManager(MemoryManager):
     def __init__(self, manager):
         super().__init__(manager)
         # Set DRAM constraints
-        self.dram_dict = {}
         self.bus_policy = cfg.MIDAP.BUS_POLICY
         self.dram_constants = [cfg.DRAM.CAS, cfg.DRAM.PAGE_DELAY, cfg.DRAM.REFRESH_DELAY]
         self.dram_offsets = [cfg.DRAM.PAGE_OFFSET, cfg.DRAM.RESET_OFFSET, cfg.DRAM.RESET_PERIOD]
@@ -25,9 +24,6 @@ class VMemoryManager(MemoryManager):
         self.bmmem_valid_timer = [0, 0]
         self.fifo_end_timer = 0
         self.continuous_request_size = 0
-    
-    def add_dram_info(self, name, tensor):
-        self.dram_dict[name] = tensor
     
     def get_dram_write_latency(self, size):
         cas, pg_dly, rst_dly = self.dram_constants 
@@ -171,11 +167,7 @@ class VMemoryManager(MemoryManager):
 class TVMemoryManager(VMemoryManager): # Use dump memory file test
     def __init__(self, manager):
         super().__init__(manager)
-        self.dram_data = np.fromfile(cfg.DRAM.DUMP_FILE, dtype=np.float32)
-
-    def add_dram_info(self, name, addr):
-        self.dram_dict[name] = addr # Same behavior but different meaning
-
+    
     def read_dram_data(self, name, offset, size):
         dram_address = self.dram_dict[name] + offset
         return self.dram_data[dram_address:dram_address + size]

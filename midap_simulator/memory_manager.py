@@ -31,9 +31,12 @@ class MemoryManager():
         self.bmmem_in_use = -1
         logging.config.dictConfig(cfg.LOGGING_CONFIG_DICT)
         self.logger = logging.getLogger('debug')
+        self.dram_data = None
+        self.dram_dict = None
 
-    def add_dram_info(self, name, tensor):
-        pass
+    def set_dram_info(self, dram_data, dram_dict):
+        self.dram_data = dram_data
+        self.dram_dict = dram_dict
     
     def sync(self):
         return 0

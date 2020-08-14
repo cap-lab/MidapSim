@@ -26,6 +26,17 @@ def crop_test_example2():
     x = mb.Sum(x, x_crop, activation = 'Relu')
     return mb
 
+def crop_test_example3():
+    mb = ModelBuilder("crop_test")
+    x = mb.set_input_tensor(tensor_shape = (1, 128, 5, 5))
+    x = mb.Conv(x, 128, 128, 1, 1, 0)
+    x_crop = mb.Crop(x, [1,-1])
+    x_crop2 = mb.Crop(x, [1,-1])
+    x = mb.Conv(x_crop2, 128, 64, 1, 1, 0)
+    x = mb.Conv(x, 64, 64, 1, 1, 0)
+    x = mb.Conv(x, 64, 128, 1, 1, 0, activation = 'Linear')
+    x = mb.Sum(x, x_crop, activation = 'Relu')
+    return mb
 
 if __name__ == '__main__':
     tr = TestWrapper()
@@ -35,4 +46,7 @@ if __name__ == '__main__':
     print("-------------------------------------Test 2------------------------------------")
     mb_x_crop2= crop_test_example2()
     tr.run_all(mb_x_crop2)
+    print("-------------------------------------Test 3------------------------------------")
+    mb_x_crop3= crop_test_example3()
+    tr.run_all(mb_x_crop3)
     print("-------------------------------Crop Test finished------------------------------")

@@ -12,8 +12,8 @@ from .dma_memory_manager import DMemoryManager, TDMemoryManager
 def get_memory_manager(manager):
     ct = cfg.DRAM.COMM_TYPE
     if ct == 'VIRTUAL':
-        return VMemoryManager(manager)
-    if ct == 'TEST':
+        return TVMemoryManager(manager)
+    if ct == 'TEST_DMA':
         return TDMemoryManager(manager)
     elif ct == 'DMA':
         return DMemoryManager(manager)
@@ -45,8 +45,8 @@ class MemoryController():
     def __del__(self):
         del self.memory_manager
 
-    def add_dram_info(self, name, tensor):
-        self.memory_manager.add_dram_info(name, tensor)
+    def set_dram_info(self, dram_data, dram_address_dict):
+        self.memory_manager.set_dram_info(dram_data, dram_address_dict)
 
     def setup(self, layer_info):
         control_info = layer_info.control_info

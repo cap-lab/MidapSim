@@ -11,8 +11,10 @@ import logging
 class SimulatorInstruction(object):
     def __init__(self, compiler_input = None):
         self.processing_order = []
-        self.dram_data_dict = {} # Initial data, nparray
+        self.dram_address_dict = {} # Initial data, nparray
         self.data_info_dict = {} # temporal data (output tensors for each layer), SDataInfo
+        self.dram_data = np.zeros(0)
+        self.dram_size = 0
         logging.config.dictConfig(cfg.LOGGING_CONFIG_DICT)
         self.logger = logging.getLogger("debug")
         if compiler_input is not None:
@@ -20,23 +22,18 @@ class SimulatorInstruction(object):
 
     def from_compiler_input(self, **kwargs):
         pass
+    
+    def register_dram_data(self, data_name, data):
+        if data_name not in self.dram_address_dict:
+            addr = self.dram_size
+            self.dram_address_dict[data_name] = addr
+            self.dram_size += data.size
+            self.dram_data = np.concatenate([self.dram_data, data.reshape(-1)])
+            del data
 
     def dump_dram_data(self, file_name = 'dram.txt'):
-        data_entry_offset_dict = {}
-        data_offset = 0
-        data_arr = []
-        self.logger.info("cfg.DRAM.COMM_TYPE == {}... DRAM DUMPING STARTS".format(cfg.DRAM.COMM_TYPE))
-        for data_id in self.dram_data_dict:
-            data_entry_offset_dict[data_id] = data_offset
-            data_offset += self.dram_data_dict[data_id].size
-            data_arr.append(self.dram_data_dict[data_id])
-        self.dram_data_dict = data_entry_offset_dict
-        self.logger.info("TOTAL ENTRY SIZE: {} KiB.. executing nparray.tofile()".format(data_offset / 1024))
-        dram_np_array = np.hstack(data_arr)
-        del data_arr
-        dram_np_array.astype('float32').tofile(file_name)
-        del dram_np_array
-        self.logger.info("Finished... expected Dump File {} SIZE: {} KiB.. ".format(file_name, 4 * data_offset / 1024))
+        self.dram_data.astype('float32').tofile(file_name)
+        self.logger.info("Finished... expected Dump File {} SIZE: {} KiB.. ".format(file_name, 4 * self.dram_data.size / 1024))
 
 class SimulatorInstructionV1(SimulatorInstruction): # from existing compiler input, v1.4.0
     def __init__(self, compiler_input = None, **kwargs):
@@ -45,7 +42,7 @@ class SimulatorInstructionV1(SimulatorInstruction): # from existing compiler inp
     
     def from_compiler_input(self, input_data_list, init_layer_list, path_info):
         for data_name, data in zip(init_layer_list, input_data_list):
-            self.dram_data_dict[data_name] = data.reshape(-1)
+            self.register_dram_data(data_name, data.reshape(-1))
         prev_wmem_info = None
         prev_layer = None
         for midap_layer in path_info:
@@ -54,7 +51,19 @@ class SimulatorInstructionV1(SimulatorInstruction): # from existing compiler inp
             elif isinstance(midap_layer.main_op, ConcatOp):
                 pass
             elif isinstance(midap_layer.main_op, Crop):
-                pass
+                # Crop z, y -axis is not supported
+                main_op = midap_layer.main_op
+                if main_op.crop_y is not None:
+                    raise ValueError("op {} is not supported.. y-axis crop".formap(main_op))
+                # Too dirty code.. T_T
+                input_name = midap_layer.input[0].output_name
+                pivot_x = main_op.crop_x[0]
+                self.update_pivot(input_name, pivot_x)
+                #
+                offset = main_op.crop_x[0] * midap_layer.output_tensor[0,:,:].size
+                addr = self.dram_address_dict[midap_layer.input[0].output_name] + offset
+                self.dram_address_dict[midap_layer.output_name] = addr
+                continue
             else:
                 layer_info = SLayerInfo()
                 layer_info.from_midap_layer(midap_layer)
@@ -69,9 +78,11 @@ class SimulatorInstructionV1(SimulatorInstruction): # from existing compiler inp
                 self.update_mapping_info(layer_info)
             self.setup_data(midap_layer)
         ct = cfg.DRAM.COMM_TYPE
-        if ct in ['TEST', 'DMA']:
+        if 'DMA' in ct:
             dram_file = cfg.DRAM.DUMP_FILE
             self.dump_dram_data(dram_file)
+            if not 'TEST' in ct:
+                del self.dram_data # Minimize the simulation memory size
 
     def update_mapping_info(self, layer_info):
         input_name = layer_info.input[0].name
@@ -80,18 +91,23 @@ class SimulatorInstructionV1(SimulatorInstruction): # from existing compiler inp
             input_mapping = layer_info.control_info.get_input_mapping(input_name)
             if nif < len(input_mapping):
                 pivot_x = input_mapping[nif].head
-                oml = self.output_mapping_dict[input_name]
-                for omap in oml:
-                    omap.write_on_dram_pivot = min(omap.write_on_dram_pivot, pivot_x)
-                if not self.data_info_dict[input_name].require_dram_space:
-                    self.data_info_dict[input_name].require_dram_space = True
-                    self.dram_data_dict[input_name] = np.zeros(self.data_info_dict[input_name].data.size)
+                self.update_pivot(input_name, pivot_x)
         output_mapping = layer_info.control_info.fmem_info.output_mapping
         for on in output_mapping:
             if on in self.output_mapping_dict:
                 self.output_mapping_dict[on].append(output_mapping[on])
             else:
                 self.output_mapping_dict[on] = [output_mapping[on]]
+
+    def update_pivot(self, input_name, pivot_x):
+        if input_name in self.output_mapping_dict:
+            oml = self.output_mapping_dict[input_name]
+            for omap in oml:
+                omap.write_on_dram_pivot = min(omap.write_on_dram_pivot, pivot_x)
+            if not self.data_info_dict[input_name].require_dram_space:
+                self.data_info_dict[input_name].require_dram_space = True
+                data = np.zeros(self.data_info_dict[input_name].data.size)
+                self.register_dram_data(input_name, data)
 
     def setup_data(self, midap_layer):
         #Output tensor
@@ -112,7 +128,8 @@ class SimulatorInstructionV1(SimulatorInstruction): # from existing compiler inp
                 idx = 0 if control_info.reverse_write else -1
                 require_dram_space = output_mapping[idx][-1][-1] < output_data.shape[0]
         if require_dram_space:
-            self.dram_data_dict[output_name] = np.zeros(output_data.size)
+            data = np.zeros(output_data.size)
+            self.register_dram_data(output_name, data)
             #print("output: {}, size: {}".format(output_name, output_data.size))
         # DRAM Space reservation END
         if output_name not in self.data_info_dict:
@@ -124,7 +141,7 @@ class SimulatorInstructionV1(SimulatorInstruction): # from existing compiler inp
             weight = main_op.weight
             bias = main_op.bias
             weight_name = main_op.name + '_w'
-            self.dram_data_dict[weight_name] = weight.reshape(-1)
+            self.register_dram_data(weight_name, weight.reshape(-1))
             if bias is not None:
                 bias_name = main_op.name + '_b'
-                self.dram_data_dict[bias_name] = bias.reshape(-1)
+                self.register_dram_data(bias_name, bias.reshape(-1))
