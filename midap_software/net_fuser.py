@@ -103,7 +103,6 @@ class ManualSearch(AllSearch):
     @classmethod
     def search(cls, partition, analyzer):
         partition.best = analyzer.get_worst_results()[0]
-        out_w = partition.out_w
 
         tmp = partition.name.split("_")
         size = cls.pyramid_size[int(tmp[-1]) - 1]
