@@ -81,8 +81,8 @@ class SimulatorInstructionV1(SimulatorInstruction): # from existing compiler inp
         if 'DMA' in ct:
             dram_file = cfg.DRAM.DUMP_FILE
             self.dump_dram_data(dram_file)
-            if not 'TEST' in ct:
-                del self.dram_data # Minimize the simulation memory size
+            #if not 'TEST' in ct:
+            #    del self.dram_data # Minimize the simulation memory size
 
     def update_mapping_info(self, layer_info):
         input_name = layer_info.input[0].name

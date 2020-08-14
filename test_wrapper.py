@@ -12,6 +12,7 @@ class TestWrapper(object):
         self.midap_model = None
         self.cm = None
         self.midap_simulator = None
+        self.step_checker = [0, 0, 0]
         self.simulation_level = simulation_level
 
     def setup_from_builder(self, builder):

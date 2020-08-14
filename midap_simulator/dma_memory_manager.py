@@ -5,6 +5,7 @@ from collections import deque
 
 from config import cfg
 from .memory_manager import MemoryManager
+from .packet_manager import PacketManager
 
 class RequestInfo(object): # Memorymanager ---(QUEUE)---> DMA
     request_id = 0
@@ -48,7 +49,20 @@ class DMemoryManager(MemoryManager):
         self.dram_address_dict = {}
         # 0 , 1 : WMEM id
         # 2 , 3 : BMMEM id
-        # 4 ~ N + 3 : FMEM id 
+        # 4 ~ N + 3 : FMEM id
+
+        self.time = 0 #DMA Time
+        self.last_time = 0
+
+        # Communicate with HSIM
+        if cfg.MIDAP.CORE_ID >= 0:
+            self.dram_data = np.fromfile(cfg.DRAM.DUMP_FILE, dtype=np.float32)
+            self.packet_manager = PacketManager("../../shared/.args.shmem.dat_" + str(cfg.MIDAP.CORE_ID))
+
+    def __del__(self):
+        if cfg.MIDAP.CORE_ID >= 0:
+            self.packet_manager.terminatedRequest()
+            del self.packet_manager
 
     def set_dram_info(self, dram_data, dram_dict):
         self.dram_address_dict = dram_dict
@@ -75,15 +89,30 @@ class DMemoryManager(MemoryManager):
             self.logger.error("Memory(Buffer) object must be specified!")
             raise RuntimeError()
         request_time = self.manager.stats.total_cycle()
-        request = RequestInfo(request_type, request_size, buf, offset, dram_address)
-        qe = QueueElement(mem_id, request_time, request)
-        if request_type == 1:
-            self.wqueue.append(qe)
-        elif mem_id < 2:
-            self.hp_rqueue.append(qe)
-        else:
-            self.lp_rqueue.append(qe)
-        return request.id
+        request_id = -1
+
+        # Split the request into small packets and return the last packet id.
+        while request_size > 0:
+            size = cfg.MIDAP.PACKET_SIZE
+            if request_size < cfg.MIDAP.PACKET_SIZE:
+                size = request_size
+            request = RequestInfo(request_type, size, buf, offset, dram_address)
+            qe = QueueElement(mem_id, request_time, request)
+
+            request_size -= size
+            dram_address += size
+            offset +=  size
+
+            if request_type == 1:
+                self.wqueue.append(qe)
+            elif mem_id < 2:
+                self.hp_rqueue.append(qe)
+            else:
+                self.lp_rqueue.append(qe)
+
+            request_id = request.id
+
+        return request_id
     ###########################
 
     def get_dram_address(self, name, offset):
@@ -210,33 +239,46 @@ class DMemoryManager(MemoryManager):
         current_time = self.manager.stats.total_cycle()
         # mem_id < 1: Update DMA - HSIM Timer until t <= current_time
         # When mem_id >= 0: Run DMA until the request of id = target_request_id is finished
-        time = 0 #DMA Time
+        # time = 0 #DMA Time
+
         if mem_id == -1:
             check = lambda t, md: t <= current_time
         elif sync:
             check = lambda t, md: len(self.wqueue) > 0
         else:
             check = lambda t, md: self.wait_request_info[md] >= 0
-        while check(time, mem_id):
+        while check(self.time, mem_id):
             # do sth // junk code // not only the priority of the request but timing must be considered together
             if len(self.wqueue) > 0:
                 mid, req_time, request = self.wqueue.popleft()
             elif len(self.hp_rqueue) > 0:
                 mid, req_time, request = self.hp_rqueue.popleft()
-            else:
-                if len(self.lp_rqueue) == 0:
-                    raise RuntimeError("Cannot find the request for mem id {}, wait_request_info".format(mem_id, self.wait_request_info))
+            elif len(self.lp_rqueue) > 0:
                 mid, req_time, request = self.lp_rqueue.popleft()
+            else:
+                self.time = current_time
+                self.packet_manager.elapsedRequest(current_time)
+                return self.time
+            #else:
+            #    if len(self.lp_rqueue) == 0:
+            #        raise RuntimeError("Cannot find the request for mem id {}, wait_request_info".format(mem_id, self.wait_request_info))
+            #    mid, req_time, request = self.lp_rqueue.popleft()
             if request.type == 1:
-                time = max(time, req_time) + 1 # Junk code
+                self.time = max(self.time, req_time)
+                self.packet_manager.writeRequest(request.dram_address, request.size, request.buf[request.offset:request.offset+request.size], self.time)
+                self.time += 1 # Junk code
                 # Write the request.buf on the DRAM
                 del request.buf
             else:
-                time = max(time, req_time) + 100 # Junk code ... the time that DMA receives HSIM respond
+                self.time = max(self.time, req_time)
+                data, work_time = self.packet_manager.readRequest(request.dram_address, request.size, self.time)
+                if self.time < work_time:
+                    self.time = work_time
+                #self.time += work_time # Junk code ... the time that DMA receives HSIM respond
                 if self.wait_request_info[mid] == request.id:
                     self.wait_request_info[mid] = -1 # Processed
-                request.buf[request.offset:request.offset+request.size] = np.zeros(request.size) # READ DRAM DATA.. dram[request.dram_address:request.dram_address + request.size
-        return time # DMA Time
+                request.buf[int(request.offset):int(request.offset+request.size)] = data[0:int(request.size)] # READ DRAM DATA.. dram[request.dram_address:request.dram_address + request.size
+        return int(self.time) # DMA Time
     ###### TODO End
 
 
@@ -248,7 +290,7 @@ class DMemoryManager(MemoryManager):
         return max(0, end_time - current_time)
 
     def sync(self): # Called when each layer processing is finished
-        time = self.update_queue(sync = True)
+        time = self.update_queue(mem_id = 0, sync = True)
         return time
 
 class TDMemoryManager(DMemoryManager): # Test dump memory file & DMA logic works

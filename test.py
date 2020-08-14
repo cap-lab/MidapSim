@@ -12,6 +12,7 @@ import models.se_resnet as se_resnet
 from config import cfg
 from test_wrapper import TestWrapper
 
+import os
 
 def parse():
     parser = argparse.ArgumentParser()
@@ -39,6 +40,8 @@ def parse():
     parser.add_argument('--level', type=int, default=0)
     parser.add_argument('--debug', action="store_true", default = False)
     parser.add_argument('-d', '--dram_comm_type', choices=['DMA', 'TEST_DMA', 'VIRTUAL'], default = 'VIRTUAL')
+    parser.add_argument('-ci', '--core_id', type=int, default=-1)
+    parser.add_argument('-ps', '--packet_size', type=int, default=2048)
     return parser.parse_args()
 
 
@@ -120,6 +123,11 @@ if __name__ == '__main__':
     cfg.DRAM.FREQUENCY   = args.dram_freq
     cfg.DRAM.COMM_TYPE = args.dram_comm_type
     cfg.SYSTEM.BANDWIDTH = (cfg.DRAM.CHANNEL_SIZE * cfg.DRAM.FREQUENCY * cfg.DRAM.NUM_CHANNELS * 2) // cfg.SYSTEM.DATA_SIZE
+
+    cfg.MIDAP.CORE_ID = args.core_id
+    cfg.MIDAP.PACKET_SIZE = args.packet_size
+    if cfg.MIDAP.CORE_ID >= 0:
+        cfg.DRAM.DUMP_FILE = os.path.dirname(os.path.realpath(__file__)) + str("/../shared/.args.dram.dat")
 
     if args.debug:
         cfg.LOGGING_CONFIG_DICT['root']['level'] = 'DEBUG'
