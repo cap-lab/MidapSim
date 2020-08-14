@@ -115,7 +115,7 @@ class VMemoryManager(MemoryManager):
         current_time = self.manager.stats.total_cycle()
         time_gap = max(0, self.wmem_valid_timer[self.wmem_in_use] - current_time)
         if time_gap > 0:
-            self.logger.debug("WMEM {} load delay occured & time_gap = {}".format(self.wmem_in_use, time_gap))
+            self.logger.debug("Time {}: WMEM {} load delay occured & time_gap = {}".format(current_time, self.wmem_in_use, time_gap))
             self.wmem_valid_timer[self.wmem_in_use] = 0
         # End
         if not extended_cim and address + self.system_width > self.wmem_size:
@@ -134,7 +134,7 @@ class VMemoryManager(MemoryManager):
         time_gap = max(0, self.fmem_valid_timer[bank_idx] - current_time)
         if time_gap > 0:
             self.fmem_valid_timer[bank_idx] = 0
-            self.logger.debug("FMEM {} load delay occured & time_gap = {}".format(bank_idx, time_gap))
+            self.logger.debug("Time {}: FMEM {} load delay occured & time_gap = {}".format(current_time, bank_idx, time_gap))
         buf[:self.system_width] = self.fmem[bank_idx, address:address+self.system_width]
         return time_gap
 
@@ -143,7 +143,7 @@ class VMemoryManager(MemoryManager):
         time_gap = max(0, self.bmmem_valid_timer[self.bmmem_in_use] - current_time)
         if time_gap > 0:
             self.bmmem_valid_timer[self.bmmem_in_use] = 0
-            self.logger.debug("BMMEM {} load delay occured & time_gap = {}".format(self.bmmem_in_use, time_gap))
+            self.logger.debug("Time {}: BMMEM {} load delay occured & time_gap = {}".format(current_time, self.bmmem_in_use, time_gap))
         size = self.system_width if extended_cim else self.num_wmem
         buf[:size] = self.bmmem[self.bmmem_in_use, address:address + size]
         return time_gap

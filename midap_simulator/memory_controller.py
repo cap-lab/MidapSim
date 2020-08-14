@@ -200,7 +200,7 @@ class MemoryController():
             reverse_load = False
             ):
         self.logger.debug("Function call: Load Filter")
-        self.logger.debug("compute_type: {}, filter_name: {}, filter_size: {}, group_size: {}, wmem_pivot: {}, filter_idx_pivot: {}, reverse_load: {}".format(compute_type, filter_name, filter_size, group_size, wmem_pivot, filter_idx_pivot, reverse_load))
+        self.logger.debug("Time: {}, compute_type: {}, filter_name: {}, filter_size: {}, group_size: {}, wmem_pivot: {}, filter_idx_pivot: {}, reverse_load: {}".format(self.manager.stats.total_cycle(), compute_type, filter_name, filter_size, group_size, wmem_pivot, filter_idx_pivot, reverse_load))
         if compute_type == 0:
             for g in range(group_size):
                 for wmem_idx in range(self.num_wmem):
@@ -251,7 +251,7 @@ class MemoryController():
         inp = self.input_mapping[data_name]
         data_size = (info[1] - info[0]) * inp.yz_plane_size
         data_address = inp.yz_plane_size * info[0]
-        self.logger.debug("LOAD FMEM bank {}: DATA {}, address {}, size {}".format(fmem_idx, data_name, data_address, data_size))
+        self.logger.debug("Time {}: LOAD FMEM bank {}: DATA {}, address {}, size {}".format(self.manager.stats.total_cycle(), fmem_idx, data_name, data_address, data_size))
         self.memory_manager.load_fmem(
                 fmem_idx,
                 data_name,
