@@ -110,7 +110,7 @@ class VOutputTensor(VirtualTensor):
         in_x, in_y, in_z = loc
         offset_x, offset_y, offset_z = self.offset
         if self.reverse_write:
-            in_x = self.orig_shape[0] - in_x - 1
+            in_x = self.shape[0] - in_x - 1
         return (in_x + offset_x, in_y + offset_y, in_z + offset_z)
 
     def calculate_linear_loc(self, loc):
