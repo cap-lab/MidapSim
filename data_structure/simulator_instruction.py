@@ -83,6 +83,9 @@ class SimulatorInstructionV1(SimulatorInstruction): # from existing compiler inp
                 oml = self.output_mapping_dict[input_name]
                 for omap in oml:
                     omap.write_on_dram_pivot = min(omap.write_on_dram_pivot, pivot_x)
+                if not self.data_info_dict[input_name].require_dram_space:
+                    self.data_info_dict[input_name].require_dram_space = True
+                    self.dram_data_dict[input_name] = np.zeros(self.data_info_dict[input_name].data.size)
         output_mapping = layer_info.control_info.fmem_info.output_mapping
         for on in output_mapping:
             if on in self.output_mapping_dict:
@@ -109,7 +112,7 @@ class SimulatorInstructionV1(SimulatorInstruction): # from existing compiler inp
                 idx = 0 if control_info.reverse_write else -1
                 require_dram_space = output_mapping[idx][-1][-1] < output_data.shape[0]
         if require_dram_space:
-            self.dram_data_dict[output_name] = np.zeros(output_data.reshape(-1).shape)
+            self.dram_data_dict[output_name] = np.zeros(output_data.size)
             #print("output: {}, size: {}".format(output_name, output_data.size))
         # DRAM Space reservation END
         if output_name not in self.data_info_dict:
