@@ -30,12 +30,6 @@ class VMemoryManager(MemoryManager):
         return math.ceil(pg_dly * math.ceil(size / self.dram_page_size))
     
     def get_dram_read_latency(self, size, continuous_request = False):
-        if continuous_request:
-            self.continuous_request_size += size
-            return 0
-        elif self.continuous_request_size > 0:
-            size += self.continuous_request_size
-            self.continuous_request_size = 0
         if self.dram_latency_type == 'worst':
             cas, pg_dly, rst_dly = self.dram_constants
             pg_ofs, rst_ofs, rst_prd = self.dram_offsets  # Deprecated
@@ -50,6 +44,9 @@ class VMemoryManager(MemoryManager):
             return math.ceil(predict)
         else:
             raise ValueError("Unknown latency type!: " + self.dram_latency_type)
+    
+    def get_transfer_latency(self, size):
+        return math.ceil(size / self.dram_bandwidth)
     
     def reset_wmem(self):
         self.wmem_in_use = -1
@@ -66,15 +63,19 @@ class VMemoryManager(MemoryManager):
         self.wmem[wmem_not_in_use, wmem_idx, wmem_offset:wmem_offset + filter_size] = \
                 self.read_dram_data(filter_name, dram_offset, filter_size)
         # DRAM Access time
-        self.update_wmem_timer(wmem_not_in_use, filter_size, continuous_request)
-
-    def update_wmem_timer(self, wid, filter_size, continuous_request):
-        current_time = self.manager.stats.total_cycle()
-        load_start_time = max(current_time, max(self.wmem_valid_timer))
-        expected_transfer_time = self.get_dram_read_latency(filter_size, continuous_request)
-        if expected_transfer_time == 0:
+        if continuous_request:
+            self.continuous_request_size += filter_size
             self.logger.debug("Transfer size cumulation...")
-            return None
+            return 0
+        self.update_wmem_timer(wmem_not_in_use, filter_size + self.continuous_request_size)
+        if not continuous_request:
+            self.continuous_request_size = 0
+
+    def update_wmem_timer(self, wid, filter_size):
+        expected_request_time = self.get_dram_read_latency(filter_size)
+        current_time = self.manager.stats.total_cycle()
+        load_start_time = max(current_time + expected_request_time, max(self.wmem_valid_timer))
+        expected_transfer_time = self.get_transfer_latency(filter_size)
         self.wmem_valid_timer[wid] = load_start_time + expected_transfer_time
         for bid in range(len(self.bmmem_valid_timer)):
             if self.bmmem_valid_timer[bid] > load_start_time:
@@ -96,10 +97,11 @@ class VMemoryManager(MemoryManager):
         self.fmem_valid_timer[fmem_idx] = self.fifo_end_timer 
         self.logger.debug("FMEM {} timer & fifo_end_timer is updated to {}".format(fmem_idx, self.fifo_end_timer))
     
-    def update_fifo_timer(self, data_size):
+    def update_fifo_timer(self, data_size):         
+        expected_request_time = self.get_dram_read_latency(data_size)
         current_time = self.manager.stats.total_cycle()
-        load_start_time = max(current_time, self.fifo_end_timer)
-        expected_transfer_time = self.get_dram_read_latency(data_size)
+        load_start_time = max(current_time + expected_request_time, self.fifo_end_timer)
+        expected_transfer_time = self.get_transfer_latency(data_size)
         self.fifo_end_timer = load_start_time + expected_transfer_time
 
     def load_bmmem(self, bias_name, bias_size):
