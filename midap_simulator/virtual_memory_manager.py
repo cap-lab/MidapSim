@@ -66,7 +66,7 @@ class VMemoryManager(MemoryManager):
         if continuous_request:
             self.continuous_request_size += filter_size
             self.logger.debug("Transfer size cumulation...")
-            return 0
+            return None
         self.update_wmem_timer(wmem_not_in_use, filter_size + self.continuous_request_size)
         if not continuous_request:
             self.continuous_request_size = 0
