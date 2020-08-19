@@ -50,6 +50,8 @@ class Stats():
         branch.DELAY.READ_FMEM = 0
         branch.DELAY.WRITE_DRAM = 0
         branch.DELAY.WRITE_FMEM = 0
+        branch.DRAM = AttrDict()
+        branch.DRAM.BUS_BUSY_TIME = 0
         return branch
 
     def init_description(self):
@@ -68,6 +70,7 @@ class Stats():
         __DESCRIPTION.DELAY.READ_FMEM = "FMEM Read delay"
         __DESCRIPTION.DELAY.WRITE_DRAM = "DRAM Write Delay"
         __DESCRIPTION.DELAY.WRITE_FMEM = "LATENCY due to the write operation bottleneck"
+        __DESCRIPTION.DRAM.BUS_BUSY_TIME = "DRAM busy time"
         return __DESCRIPTION
 
     def update(self, layer_name, print_stats=True):
@@ -166,6 +169,9 @@ class Stats():
         self.local_stats.DELAY.WRITE_FMEM += t
         self.local_stats.CLOCK += t
 
+    def use_dram_bus(self, t):
+        self.local_stats.DRAM.BUS_BUSY_TIME += t
+
     def set_macs(self, size):
         self.local_stats.MACs = size
 
@@ -198,6 +204,8 @@ class Stats():
         mac = []
         fps = []
         utilization = []
+        dram_busy_time = []
+        dram_utilization = []
         dram_is = []
         dram_ws = []
 
@@ -230,6 +238,8 @@ class Stats():
 
             mac.append(stats_layer['MACs'])
             cycle.append(stats_layer['CLOCK'])
+            dram_busy_time.append(stats_layer['DRAM']['BUS_BUSY_TIME'])
+            dram_utilization.append(dram_busy_time[-1]/cycle[-1])
             fps.append(cps / stats_layer['CLOCK'])
             utilization.append(stats_layer['MACs'] / (stats_layer['CLOCK'] * num_mac_units))
             main_op = layer.modules[0].op
@@ -247,21 +257,22 @@ class Stats():
             dram_ws.append(weight_size + max(int(math.ceil(weight_size / (cfg.MIDAP.WMEM.NUM_ENTRIES * cfg.MIDAP.WMEM.NUM * cfg.SYSTEM.DATA_SIZE))), 1) * input_size)
 
         print("{}\tDRAM_Access\tDRAM_Delay\tDRAM_Access(FMEM)\tDRAM_Access(WMEM)\tDRAM_Delay(FMEM)\t\
-            DRAM_Delay(WMEM)\tMACs\tCYCLE\tFPS\tUtilization\tDRAM_Access(IS)\tDRAM_Access(WS)\tUtil.(Conv)\tResidual_Delay(WMEM)\t\
+            DRAM_Delay(WMEM)\tMACs\tCYCLE\tDRAM_BUSY_TIME\tDRAM_Utilization\tFPS\tUtilization\tDRAM_Access(IS)\tDRAM_Access(WS)\tUtil.(Conv)\tResidual_Delay(WMEM)\t\
             FC_Delay(WMEM)\tConv_Delay(WMEM)\tDRAM_Dealy_Ratio\tDRAM_Delay_Ratio(FMEM)\tDRAM_Delay_Ratio(WMEM)\tDRAM_Delay_Ratio(WMEM, Conv)".format(model))
-        for v in zip(name, dram, total_delay, fmem_dram, wmem_dram, fmem_delay, wmem_delay, mac, cycle, fps, utilization, dram_is, dram_ws):
-            print("{}\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t{:.0f}\t{:.4f}\t{}\t{}".format(*v))
+        for v in zip(name, dram, total_delay, fmem_dram, wmem_dram, fmem_delay, wmem_delay, mac, cycle, dram_busy_time, dram_utilization, fps, utilization, dram_is, dram_ws):
+            print("{}\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t{:.4f}\t{:.0f}\t{:.4f}\t{}\t{}".format(*v))
 
         # dram, fmem_dram, wmem_dram, total_delay, fmem_delay, wmem_delay, mac, cycle, fps, utilization
         # conv util, residual delay, fc delay, conv delay, dram delay ratio, fmem ratio, wmem ratio, wmem ratio (only conv)
         global_stat = self.global_stats
-        print("Total\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t\
-                {:.0f}\t{:.4f}\t{}\t{}\t{:.4f}\t{}\t{}\t\
+        print("Total\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t{:,}\t\
+                \t{:.4f}\t{:.0f}\t{:.4f}\t{}\t{}\t{:.4f}\t{}\t{}\t\
                 {}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}".format(global_stat.READ.DRAM + global_stat.WRITE.DRAM, global_stat.DELAY.DRAM,
                                                            global_stat.READ.DRAM2FMEM,
                                                            global_stat.READ.DRAM2WMEM,
                                                            global_stat.DELAY.READ_FMEM, global_stat.DELAY.READ_WMEM,
-                                                           global_stat.MACs, global_stat.CLOCK, cps / global_stat.CLOCK,
+                                                           global_stat.MACs, global_stat.CLOCK, global_stat.DRAM.BUS_BUSY_TIME,
+                                                           global_stat.DRAM.BUS_BUSY_TIME/global_stat.CLOCK, cps / global_stat.CLOCK,
                                                            global_stat.MACs / (global_stat.CLOCK * num_mac_units), sum(dram_is), sum(dram_ws),
                                                            conv_mac / (conv_clock * num_mac_units), residual_delay, fc_delay, conv_delay,
                                                            global_stat.DELAY.DRAM / global_stat.CLOCK,

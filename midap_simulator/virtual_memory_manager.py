@@ -46,7 +46,9 @@ class VMemoryManager(MemoryManager):
             raise ValueError("Unknown latency type!: " + self.dram_latency_type)
     
     def get_transfer_latency(self, size):
-        return math.ceil(size / self.dram_bandwidth)
+        t = math.ceil(size / self.dram_bandwidth)
+        self.manager.stats.use_dram_bus(t)
+        return t
     
     def reset_wmem(self):
         self.wmem_in_use = -1
