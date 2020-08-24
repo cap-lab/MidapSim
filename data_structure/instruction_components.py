@@ -160,7 +160,7 @@ class ModuleElement(object):
             extra_data_name = info.name
             extra_orig_shape = info.shape
             extra_tensor.set_tensor(extra_data_name, shape, extra_orig_shape, 'linear', offset, scale)
-            self.output.append(tensor)
+            self.output.append(extra_tensor)
 
 class Behavior(list):
     def __init__(self, behavior_type, in1, in2, in3):
