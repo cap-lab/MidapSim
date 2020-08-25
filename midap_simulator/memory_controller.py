@@ -204,7 +204,7 @@ class MemoryController():
         if compute_type == 0:
             for g in range(group_size):
                 for wmem_idx in range(self.num_wmem):
-                    continuous_request = not (wmem_idx == self.num_wmem - 1 and g == group_size - 1)
+                    continuous_request = not (wmem_idx == self.num_wmem - 1)
                     self.memory_manager.load_wmem(
                             wmem_idx = wmem_idx,
                             filter_name = filter_name,

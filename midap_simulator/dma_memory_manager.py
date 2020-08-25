@@ -16,6 +16,7 @@ class RequestInfo(object): # Memorymanager ---(QUEUE)---> DMA
             buf = None, # memory object (numpy array)
             offset = 0, # memory (buffer) R/W start offset
             dram_address = 0, # target dram address
+            num_requests = 1,
             ):
         self.id = RequestInfo.request_id
         RequestInfo.request_id += 1
@@ -28,6 +29,7 @@ class RequestInfo(object): # Memorymanager ---(QUEUE)---> DMA
         self.offset = offset
         # DRAM Info
         self.dram_address = dram_address
+        self.num_requests = num_requests
 
 class QueueElement(list):
     def __init__(self, mem_id, request_time, request):
@@ -59,6 +61,8 @@ class DMemoryManager(MemoryManager):
             self.dram_data = np.fromfile(cfg.DRAM.DUMP_FILE, dtype=np.float32)
             self.packet_manager = PacketManager("../../shared/.args.shmem.dat_" + str(cfg.MIDAP.CORE_ID))
 
+        self.continuous_request_info = [-1, 0, 0, 0] # Pivot Address, # of requests, size, pivot wmem idx
+
     def __del__(self):
         if cfg.MIDAP.CORE_ID >= 0:
             self.packet_manager.terminatedRequest()
@@ -84,9 +88,13 @@ class DMemoryManager(MemoryManager):
             buf = None, # memory object (numpy array)
             offset = 0, # memory (buffer) R/W start offset
             dram_address = 0, # target dram address
+            num_requests = 1,
             ):
         if buf is None:
             self.logger.error("Memory(Buffer) object must be specified!")
+            raise RuntimeError()
+        if num_requests > 1 and request_size > cfg.MIDAP.PACKET_SIZE:
+            self.logger.error("for merged requests, request size should not be larger than packet size [rsize: {}, psize: {}]".format(request_size, cfg.MIDAP.PACKET_SIZE))
             raise RuntimeError()
         request_time = self.manager.stats.total_cycle()
         request_id = -1
@@ -96,7 +104,7 @@ class DMemoryManager(MemoryManager):
             size = cfg.MIDAP.PACKET_SIZE
             if request_size < cfg.MIDAP.PACKET_SIZE:
                 size = request_size
-            request = RequestInfo(request_type, size, buf, offset, dram_address)
+            request = RequestInfo(request_type, size, buf, offset, dram_address, num_requests)
             qe = QueueElement(mem_id, request_time, request)
 
             request_size -= size
@@ -129,14 +137,37 @@ class DMemoryManager(MemoryManager):
         # TODO: determine the data written checking (when the wmem data is the result of previous layers)
         wmem_not_in_use = (self.wmem_in_use + 1) % 2
         self.logger.debug("Load data [{}] - addr {}, size {} to WMEM {}, offset {}".format(filter_name, dram_offset, filter_size, (wmem_not_in_use, wmem_idx), wmem_offset))
-        dram_address = self.get_dram_address(filter_name, dram_offset) 
-        request_id = self.add_request(
-                wmem_not_in_use,
-                0,
-                filter_size,
-                self.wmem[wmem_not_in_use][wmem_idx],
-                wmem_offset,
-                dram_address)
+        dram_address = self.get_dram_address(filter_name, dram_offset)
+        if filter_size * 2 < cfg.MIDAP.PACKET_SIZE:
+            if self.continuous_request_info[0] == -1:
+                self.continuous_request_info[0] = dram_address
+                self.continuous_request_info[3] = wmem_idx
+            else:
+                if self.continuous_request_info[0] + self.continuous_request_info[2]  != dram_address:
+                    self.logger.error("It is not a continuous_request!! Orig request info: {}, new request address: {} ".format(self.continuous_request_info, dram_address))
+                    raise RuntimeError()
+            self.continuous_request_info[1] += 1
+            self.continuous_request_info[2] += filter_size
+            if not continuous_request or self.continuous_request_info[2] + filter_size > cfg.MIDAP.PACKET_SIZE:
+                load_addr, lw_num, load_size, lw_idx = self.continuous_request_info
+                request_id = self.add_request(
+                        wmem_not_in_use,
+                        0,
+                        load_size,
+                        self.wmem[wmem_not_in_use][lw_idx:lw_idx+lw_num] if lw_num > 1 else self.wmem[wmem_not_in_use][lw_idx],
+                        wmem_offset,
+                        load_addr,
+                        lw_num)
+                self.continuous_request_info = [-1, 0, 0, 0]
+        else:
+            request_id = self.add_request(
+                    wmem_not_in_use,
+                    0,
+                    filter_size,
+                    self.wmem[wmem_not_in_use][wmem_idx],
+                    wmem_offset,
+                    dram_address)
+            self.continuous_request_info = [-1, 0, 0, 0]
         if not continuous_request:
             if self.wait_request_info[wmem_not_in_use] != -1:
                 self.logger.error("WMEM Request information must be empty before the new request. WMEM {}: {}".format(wmem_not_in_use, self.wait_request_info[wmem_not_in_use]))
@@ -277,7 +308,12 @@ class DMemoryManager(MemoryManager):
                 #self.time += work_time # Junk code ... the time that DMA receives HSIM respond
                 if self.wait_request_info[mid] == request.id:
                     self.wait_request_info[mid] = -1 # Processed
-                request.buf[int(request.offset):int(request.offset+request.size)] = data[0:int(request.size)] # READ DRAM DATA.. dram[request.dram_address:request.dram_address + request.size
+                #request.buf[int(request.offset):int(request.offset+request.size)] = data[0:int(request.size)] # READ DRAM DATA.. dram[request.dram_address:request.dram_address + request.size
+                if request.num_requests == 1:
+                    request.buf[request.offset:request.offset+request.size] = data[:request.size]
+                else:
+                    shape = (request.num_requests, request.size // request.num_requests)
+                    request.buf[:, request.offset:request.offset + shape[-1]] = data[:request.size].reshape(*shape)
         return int(self.time) # DMA Time
     ###### TODO End
 
@@ -336,7 +372,12 @@ class TDMemoryManager(DMemoryManager): # Test dump memory file & DMA logic works
                 if self.wait_request_info[mid] == request.id:
                     self.wait_request_info[mid] = -1 # Processed
                     self.logger.debug("REQUEST ID {} FOR MEM {} is finished".format(self.wait_request_info[mid],mid))
-                request.buf[request.offset:request.offset+request.size] = \
-                        self.dram_data[request.dram_address:request.dram_address + request.size]
+                if request.num_requests == 1:
+                    request.buf[request.offset:request.offset+request.size] = \
+                            self.dram_data[request.dram_address:request.dram_address + request.size]
+                else:
+                    shape = (request.num_requests, request.size // request.num_requests)
+                    request.buf[:, request.offset:request.offset + shape[-1]] = \
+                            self.dram_data[request.dram_address:request.dram_address + request.size].reshape(*shape)
                 # READ DRAM DATA.. dram[request.dram_address:request.dram_address + request.size
         return time # DMA Time
