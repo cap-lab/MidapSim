@@ -1,0 +1,8 @@
+.*.sw*
+*.pyo
+*.pyc
+
+examples
+network_results
+
+*.log

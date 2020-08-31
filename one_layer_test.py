@@ -37,29 +37,6 @@ class TestWrapper(object):
         self.midap_simulator = MidapManager()
         self.step_checker = [0, 0, 0]
 
-    def setup_model(self, model_type, model, img_shape=None, image=None):
-        if image is not None:
-            self.cv.set_image(img_path=image, img_shape=img_shape)
-        else:
-            self.cv.set_input_tensor(tensor_shape=img_shape)
-        if model_type == 'caffe2':
-            init_pb = os.path.join('examples/caffe2', model, 'init_net.pb')
-            predict_pb = os.path.join('examples/caffe2', model, 'predict_net.pb')
-            self.cv.from_caffe2_model(init_pb=init_pb, predict_pb=predict_pb)
-        elif model_type == 'tf_builtin':
-            self.cv.tensorflow_module(model, builtin=True)
-        elif model_type == 'tf_model':
-            model_hdf = os.path.join('examples/tf', model + '.hdf5')
-            self.cv.tensorflow_module(model_hdf, builtin=False)
-        else:
-            raise ValueError("model_type must be one of ['caffe2', 'tf_builtin', 'tf_model']")
-        self.midap_model.from_generic_op_dict(self.cv.operator_dict)
-        self.step_checker[0] = 1
-        if self.step_checker[1] > 0:
-            del self.cm
-            self.cm = Compiler()
-            self.step_checker[1] = 0
-
     def setup_from_builder(self, builder):
         odict = builder.get_operator_dict()
         self.cv.operator_dict = odict

@@ -4,8 +4,6 @@ import os.path
 import re
 
 import numpy as np
-from caffe2.proto import caffe2_pb2
-from caffe2.python import workspace
 from PIL import Image
 
 from config import cfg
@@ -45,7 +43,6 @@ def to_tensor(PILimage):
 
     return img
 
-
 def get_abs_path(path):
     if cfg.SYSTEM.ROOT in os.path.abspath('.'):
         root_dir = cfg.SYSTEM.ROOT
@@ -53,107 +50,6 @@ def get_abs_path(path):
         print("Warning: you may use incorrect root directory. Please check your configuration file!")
         root_dir = os.path.abspath('.')
     return os.path.join(root_dir, path)
-
-
-def _GetLegacyDims(net, net_params, dummy_input, legacy_pad_ops):
-    dim_map = {}
-    # Get dimensions with legacy pad
-    for i in range(len(net.op)):
-        op_def = net.op[i]
-        if i in legacy_pad_ops:
-            output = op_def.output[0]
-            blob_legacy = workspace.FetchBlob(output)
-            dim_map[i] = blob_legacy.shape
-    return dim_map
-
-
-def _GetLegacyPadArgs(op_def, arg_map):
-    pads = {}
-    keys = ['pad_l', 'pad_t', 'pad_r', 'pad_b']
-    is_pad = 'pad' in arg_map
-    if is_pad:
-        for k in keys:
-            pads[k] = arg_map['pad'].i
-    else:
-        pads = {x: arg_map[x].i for x in keys}
-    return pads
-
-
-def _AdjustDims(op_def, arg_map, pads, dim1, dim2):
-    n1, c1, h1, w1 = dim1
-    n2, c2, h2, w2 = dim2
-    assert(n1 == n2)
-    assert(c1 == c2)
-    is_pad = 'pad' in arg_map
-    if h1 != h2 or w1 != w2:
-        if h1 == h2 + 1:
-            pads['pad_b'] += 1
-        elif h1 != h2:
-            raise Exception("Unexpected dimensions for height:", h1, h2)
-        if w1 == w2 + 1:
-            pads['pad_r'] += 1
-        elif w1 != w2:
-            raise Exception("Unexpected dimensions for width:", w1, w2)
-        if is_pad:
-            op_def.arg.remove(arg_map['pad'])
-            args = []
-            for name in pads.keys():
-                arg = caffe2_pb2.Argument()
-                arg.name = name
-                arg.i = pads[name]
-                args.append(arg)
-            op_def.arg.extend(args)
-        else:
-            for name in pads.keys():
-                arg_map[name].i = pads[name]
-
-
-def _RemoveLegacyPad(net, net_params, input_dims):
-    legacy_pad_ops = []
-    for i in range(len(net.op)):
-        op_def = net.op[i]
-        if re.match(r'^(Conv|ConvTranspose|MaxPool|AveragePool)(\dD)?$',
-                    op_def.type):
-            for arg in op_def.arg:
-                if arg.name == 'legacy_pad':
-                    legacy_pad_ops.append(i)
-                    break
-    if legacy_pad_ops:
-        n, c, h, w = input_dims
-        dummy_input = np.random.randn(n, c, h, w).astype(np.float32)
-        dim_map = _GetLegacyDims(net, net_params, dummy_input, legacy_pad_ops)
-
-        # Running with the legacy pad argument removed
-        # compare the dimensions and adjust pad argument when necessary
-        for i in range(len(net.op)):
-            op_def = net.op[i]
-            if i in legacy_pad_ops:
-                arg_map = {}
-                for arg in op_def.arg:
-                    arg_map[arg.name] = arg
-                pads = _GetLegacyPadArgs(op_def, arg_map)
-                # remove legacy pad arg
-                for j in range(len(op_def.arg)):
-                    arg = op_def.arg[j]
-                    if arg.name == 'legacy_pad':
-                        del op_def.arg[j]
-                        break
-                output = op_def.output[0]
-                # use a new name to avoid the interference with inplace
-                nonlegacy_output = output + '_nonlegacy'
-                op_def.output[0] = nonlegacy_output
-                workspace.RunOperatorOnce(op_def)
-                blob_nonlegacy = workspace.FetchBlob(nonlegacy_output)
-                # reset output name
-                op_def.output[0] = output
-
-                dim1 = dim_map[i]
-                dim2 = blob_nonlegacy.shape
-                _AdjustDims(op_def, arg_map, pads, dim1, dim2)
-
-            workspace.RunOperatorOnce(op_def)
-    return net
-
 
 def get_input_tensor(img_path=None, img_shape=None):
     if img_path is None:
@@ -173,38 +69,6 @@ def get_input_tensor(img_path=None, img_shape=None):
     image = image.resize((w, h), Image.BILINEAR)
     input_tensor = to_tensor(image)
     return input_tensor
-
-
-def load_network():
-    init_def = caffe2_pb2.NetDef()
-    net_def = caffe2_pb2.NetDef()
-
-    print("Load '{}', '{}' as the input network and its weight file".format(cfg.SYSTEM.NETWORK, cfg.SYSTEM.WEIGHTS))
-    with open(get_abs_path(cfg.SYSTEM.WEIGHTS), 'r') as f:
-        init_def.ParseFromString(f.read())
-    with open(get_abs_path(cfg.SYSTEM.NETWORK), 'r') as f:
-        net_def.ParseFromString(f.read())
-
-    if net_def.op[0].input[0] != 'data':
-        raise ModelBuildError('Incorrect input format - the name of the network input blob should be "data"')
-
-    image = Image.open(get_abs_path(cfg.SYSTEM.INPUT))
-    w, h = cfg.SYSTEM.INPUT_SIZE
-    resized_img = image.resize((w, h), Image.BILINEAR)
-
-    input_tensor = to_tensor(resized_img)
-    print(input_tensor.shape)
-    workspace.RunNetOnce(init_def)
-    workspace.FeedBlob("data", input_tensor)
-    workspace.CreateNet(net_def, overwrite=True)
-    workspace.RunNetOnce(net_def)
-    net_def = _RemoveLegacyPad(net_def, init_def, input_tensor.shape)
-    workspace.CreateNet(net_def, overwrite=True)
-
-    workspace.RunNetOnce(net_def)
-
-    return net_def
-
 
 def im2col(input_data, main_op):
     W, H, C = input_data.shape
