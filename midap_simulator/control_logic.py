@@ -466,10 +466,10 @@ class ControlLogicLv2(ControlLogicLv1):
             return lambda x: True
         crit_x = self.output_mapping[out.name].write_on_dram_pivot
         if crit_x >= out.shape[0]:
-            return lambda x: True
+            return lambda x: False
         crit_x -= out.offset[0]
         if out.reverse_write:
-            crit_x = out.orig_shape[0] - crit_x - 1
+            crit_x = out.shape[0] - crit_x - 1
         if self.main_op.type.lower() == 'gemm':
             _, out_h, _ = out.orig_shape
             crit_x = out_h * crit_x
@@ -500,7 +500,7 @@ class ControlLogicLv2(ControlLogicLv1):
                 self.skipped_cycles += self.num_gemm_rows
                 skipped_mem_read += self.num_gemm_rows
                 if write_flag:
-                    self.manager.stats.dram_write()
+                    self.manager.stats.dram_write(self.concurrency)
             else: 
                 self.skipped_cycles += self.num_gemm_rows - 1
                 skipped_mem_read += self.num_gemm_rows - 1
@@ -548,7 +548,7 @@ class ControlLogicLv2(ControlLogicLv1):
                     else:
                         self.update_stats(x, y)
                         if write_flag:
-                            self.manager.stats.dram_write()
+                            self.manager.stats.dram_write(self.concurrency)
         self.generator = self.default_generator()
 
     def update_stats(self, x, y, include_last = True):
@@ -646,15 +646,22 @@ class ControlLogicLv2(ControlLogicLv1):
         fmem_idx, effective_x = self.get_fmem_info(x)
         row_per_channel = in_c // self.system_width
         access_count = row_per_channel * in_h - 1
-        yield generate_dataflow_info(
-                phase = 1,
-                loc=self.output_loc,
-                fmem_idx=fmem_idx,
-                fmem_row=0,
-                wmem_row=0,
-                reset=True,
-                last=True,
-                )
+        n = 1
+        if not self.skip_write and self.write_lambda_x(x):
+            acces_count = 0
+            n = in_h * row_per_channel
+        elif self.write_lambda_x(x):
+            self.manager.stats.dram_write(self.concurrency * access_count)
+        for _ in range(n):
+            yield generate_dataflow_info(
+                    phase = 1,
+                    loc=self.output_loc,
+                    fmem_idx=fmem_idx,
+                    fmem_row=0,
+                    wmem_row=0,
+                    reset=True,
+                    last=True,
+                    )
         self.skipped_cycles += access_count
         self.manager.stats.fmem_read(access_count)
         self.manager.stats.wmem_read(access_count)
