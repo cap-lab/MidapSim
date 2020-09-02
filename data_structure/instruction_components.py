@@ -196,6 +196,11 @@ class SBehaviorInfo(list):
         control_info = midap_layer.control_info
         self.num_initial_fragments = control_info.num_initial_fragments
         self.input_mapping = control_info.input_mapping
+        # Verification`
+        input_last_x, _, _ = self.input_tensor.get_loc((self.input_tensor.shape[0] - 1, 0, 0))
+        if input_last_x >= self.input_mapping[-1][1][1]:
+            raise RuntimeError("Invalid Input mapping: {}, input tensor: {}, op: {}".format(self.input_mapping, self.input_tensor, self.main_op))
+        # 
         input_name = self.input_tensor.name
         loaded_inputs = self.num_initial_fragments
         processed_inputs = 0
@@ -217,6 +222,10 @@ class SBehaviorInfo(list):
                         self.append(Behavior('LOAD', cond_x, input_name, loaded_inputs))
                         loaded_inputs += 1
                 processed_inputs = idx
+        # Verification
+        if processed_inputs != loaded_inputs or loaded_inputs != len(self.input_mapping):
+            raise RuntimeError("All Input fragments must be processed.. All {} vs loaded {} vs processed {}".format(len(self.input_mapping), loaded_inputs, processed_inputs))
+
     
     def set_min_max_y(self):
         main_op = self.main_op

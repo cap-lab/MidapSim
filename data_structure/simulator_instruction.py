@@ -8,6 +8,7 @@ from .data import SDataInfo
 from config import cfg
 
 import logging 
+
 class SimulatorInstruction(object):
     def __init__(self, compiler_input = None):
         self.processing_order = []
@@ -27,6 +28,11 @@ class SimulatorInstruction(object):
         if data_name not in self.dram_address_dict:
             addr = self.dram_size
             self.dram_address_dict[data_name] = addr
+            system_width = cfg.MIDAP.SYSTEM_WIDTH
+            pad = data.size % system_width
+            if pad > 0:
+                pad = system_width - pad
+                data = np.pad(data.reshape(-1), ((0, pad)), 'constant')
             self.dram_size += data.size
             self.dram_data = np.concatenate([self.dram_data, data.reshape(-1)])
             del data
@@ -77,6 +83,7 @@ class SimulatorInstructionV1(SimulatorInstruction): # from existing compiler inp
                 self.processing_order.append(layer_info)
                 self.update_mapping_info(layer_info)
             self.setup_data(midap_layer)
+        self.verify_mapping_info()
         ct = cfg.DRAM.COMM_TYPE
         if 'DMA' in ct:
             dram_file = cfg.DRAM.DUMP_FILE
@@ -145,3 +152,12 @@ class SimulatorInstructionV1(SimulatorInstruction): # from existing compiler inp
             if bias is not None:
                 bias_name = main_op.name + '_b'
                 self.register_dram_data(bias_name, bias.reshape(-1))
+    
+    def verify_mapping_info(self):
+        for omid in self.output_mapping_dict:
+            oml = self.output_mapping_dict[omid]
+            for om in oml:
+                if om.write_on_dram_pivot < om.shape[0]:
+                    if om.name not in self.dram_address_dict:
+                        raise RuntimeError("Output data {} should be allocated on DRAM".format(om))
+

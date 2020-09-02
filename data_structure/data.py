@@ -65,6 +65,12 @@ class MappingInfo(list):
         mapping = DataMapping(idx, head, tail)
         self.append(mapping)
 
+    def __repr__(self):
+        mappinginfo = super().__repr__()
+        info = "Name: {}, Shape: {}, DRAM Pivot X: {}".format(
+                self.name, self.shape, self.write_on_dram_pivot)
+        return info + mappinginfo
+
 class SFMEMInfo(object):
     def __init__(self, **kwargs):
         self.input_mapping = OrderedDict() # MappingInfo
@@ -95,7 +101,7 @@ class SWMEMInfo(object):
         self.num_filters = 0
         self.compute_type = 0
         self.load_filter_once = False
-        self.filter_group_size = 1 # Not in use
+        self.filter_group_size = 1
         self.prepare_info = None # data name, type, size
         self.prepared = False
         self.reverse_load = False
